@@ -5,9 +5,9 @@
 #include <stdbool.h>
 #include <time.h>
 
-const int n = 5;
-const long double t = 0.001;
-const long double epsilon = 1e-05;
+const int n = 200;
+const long double t = 0.0000001;
+const long double epsilon = 1e-07;
 
 void createMatrix(long double *matrix, int size, long double mainData, long double otherData) {
     for (int i = 0; i < size; ++i) {
@@ -100,7 +100,10 @@ void set_vector(const long double *src, long double *dest, int size) {
     }
 }
 
+
+
 int main(int argc, char **argv) {
+
     long double *matrix = malloc(sizeof(long double) * n * n);
     createMatrix(matrix, n, 2.0, 1.0);
     long double *x = calloc(n, sizeof(long double));
@@ -114,9 +117,10 @@ int main(int argc, char **argv) {
     while (!crit(matrix, nextX, b, epsilon, n)) {
         iteration(x, b, matrix, t, n, nextX);
         set_vector(nextX, x, n);
+
     }
     printf("%ld\n", (clock() - start) / CLOCKS_PER_SEC);
-    printVector(nextX, n);
+    //printVector(nextX,n);
     free(matrix);
     free(x);
     free(nextX);
