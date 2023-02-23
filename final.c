@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-const int n = 10;
+const int n = 16500;
 const int tag = 123;
-const double t = 0.01;
-const double eps = 1e-07;
+const double t = 0.00001;
+const double eps = 0.00001;
 
 void create_matrix(double *matrix, int row_count, int column_count, double mainData, double otherData) {
     for (int i = 0; i < row_count; ++i) {
@@ -33,10 +33,9 @@ void mpi_start(int *argc, char ***argv, int *rank, int *size) {
     MPI_Comm_rank(MPI_COMM_WORLD, rank);
 }
 
-void alloc_vectors(double **x, double **b, double **next_x, double **main_x, int **matrix_displs, int **rows_counts,
+void alloc_vectors(double **x, double **next_x, double **main_x, int **matrix_displs, int **rows_counts,
                    int **vector_displs, int **send_counts, int proc_size) {
     *x = calloc(n, sizeof(double));
-    *b = malloc(n * sizeof(double));
     *next_x = malloc(n * sizeof(double));
     *matrix_displs = calloc(proc_size, sizeof(int));
     *rows_counts = malloc(proc_size * sizeof(int));
@@ -57,17 +56,14 @@ void free_vectors(double **x, double **b, double **next_x, double **main_x, int 
     free(*send_counts);
 }
 
-void send_matrix_to_processes(double *matrix, int *matrix_displs, int *rows_counts, int proc_size) {
+void send_matrix_to_processes(double *matrix, int *matrix_displs, const int *rows_counts, int proc_size) {
     for (int i = 1; i < proc_size; ++i) {
         MPI_Send(matrix + matrix_displs[i], n * rows_counts[i], MPI_DOUBLE, i, tag, MPI_COMM_WORLD);
     }
 }
 
 void
-init_vectors(double *b, int *matrix_displs, int *rows_counts, int *vector_displs, int *send_counts, int proc_size) {
-    for (int i = 0; i < n; ++i) {
-        *(b + i) = n + 1;
-    }
+init_vectors(int *matrix_displs, int *rows_counts, int *vector_displs, int *send_counts, int proc_size) {
     for (int i = 0; i < proc_size; ++i) {
         *(rows_counts + i) = (i < n % proc_size) ? (n / proc_size) + 1 : (n / proc_size);
         *(send_counts + i) = n;
@@ -127,15 +123,30 @@ double vector_square_sum(const double *vector, int rows_count) {
     return result;
 }
 
+void set_vector(double *vector, int size, double value) {
+    for (int i = 0; i < size; ++i) {
+        *(vector + i) = value;
+    }
+}
+
 
 int main(int argc, char **argv) {
     int rank, size;
     int *matrix_displs, *rows_counts, *vector_displs, *send_counts;
     double *matrix = NULL, *x, *main_x, *b, *next_x;
     double local_square_sum, global_square_sum;
+
     mpi_start(&argc, &argv, &rank, &size);
-    alloc_vectors(&x, &b, &next_x, &main_x, &matrix_displs, &rows_counts, &vector_displs, &send_counts, size);
-    init_vectors(b, matrix_displs, rows_counts, vector_displs, send_counts, size);
+    alloc_vectors(&x, &next_x, &main_x, &matrix_displs, &rows_counts, &vector_displs, &send_counts, size);
+    init_vectors(matrix_displs, rows_counts, vector_displs, send_counts, size);
+    b = malloc(sizeof(double) * rows_counts[rank]);
+    set_vector(b, rows_counts[rank], (double) n + 1);
+
+    double local_b_sqr_sum = vector_square_sum(b, rows_counts[rank]);
+    double global_b_sqr_sum = 0;
+    MPI_Reduce(&local_b_sqr_sum, &global_b_sqr_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&global_b_sqr_sum, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
     if (rank == 0) {
         matrix = malloc(sizeof(double) * n * n);
         create_matrix(matrix, n, n, 2.0, 1.0);
@@ -144,9 +155,11 @@ int main(int argc, char **argv) {
         matrix = malloc(sizeof(double) * n * rows_counts[rank]);
         MPI_Recv(matrix, n * rows_counts[rank], MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
+
     double *ax = malloc(sizeof(double) * rows_counts[rank]);
     double *axB = malloc(sizeof(double) * rows_counts[rank]);
     const double start_time_s = MPI_Wtime();
+
     do {
         iteration(x, b, matrix, next_x, rows_counts[rank], n);
         MPI_Gatherv(next_x, rows_counts[rank], MPI_DOUBLE, main_x, rows_counts, vector_displs, MPI_DOUBLE, 0,
@@ -159,11 +172,9 @@ int main(int argc, char **argv) {
         MPI_Reduce(&local_square_sum, &global_square_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Bcast(&global_square_sum, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
         free(scatter_displs);
-
-    } while (global_square_sum / vector_square_sum(b, n) >= eps * eps);
+    } while (global_square_sum / global_b_sqr_sum >= eps * eps);
     const double end_time_s = MPI_Wtime();
-    //printf("Process: %d , %f\n", rank, end_time_s - start_time_s);
-    printVector(x, n);
+    printf("Process: %d , %f\n", rank, end_time_s - start_time_s);
     free_vectors(&x, &b, &next_x, &main_x, &matrix_displs, &rows_counts, &vector_displs, &send_counts);
     MPI_Finalize();
     return 0;

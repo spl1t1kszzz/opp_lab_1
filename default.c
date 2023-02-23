@@ -1,4 +1,3 @@
-#include "mpi.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -27,24 +26,6 @@ long double norm(const long double *vector, int size) {
     }
     return sqrt(norm);
 }
-
-
-void printMatrix(const long double *matrix, int size) {
-    for (int i = 0; i < size; ++i) {
-        for (int j = 0; j < size; ++j) {
-            printf("%Lf ", *(matrix + i * n + j));
-        }
-        printf("\n");
-    }
-}
-
-void printVector(const long double *vector, int size) {
-    for (int i = 0; i < size; ++i) {
-        printf("%Lf ", *(vector + i));
-    }
-    printf("\n");
-}
-
 
 
 void mult_mat_vec(const long double *matrix, const long double *vector, long double *result, int size) {
@@ -101,8 +82,7 @@ void set_vector(const long double *src, long double *dest, int size) {
 }
 
 
-
-int main(int argc, char **argv) {
+int main() {
 
     long double *matrix = malloc(sizeof(long double) * n * n);
     createMatrix(matrix, n, 2.0, 1.0);
@@ -120,7 +100,6 @@ int main(int argc, char **argv) {
 
     }
     printf("%ld\n", (clock() - start) / CLOCKS_PER_SEC);
-    //printVector(nextX,n);
     free(matrix);
     free(x);
     free(nextX);
